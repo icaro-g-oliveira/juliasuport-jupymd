@@ -49,7 +49,6 @@ export class CodeExecutor {
         const ipynbPath = currentPath.replace(/\.md$/, ".ipynb");
         const lang = codeBlock.language || "python";
 
-        const lang = codeBlock.language || "python";
 
         await this.runCodeAndUpdateNotebook({
             codeBlock: codeBlock,
