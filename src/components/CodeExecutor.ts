@@ -320,94 +320,131 @@ while True:
         if (this.juliaProcess && !this.juliaProcess.killed) return;
 
         return new Promise((resolve, reject) => {
-            // Script de inicialização Julia para emular comportamento de Kernel
+            // Adicionada verificação robusta de pacotes no initJulia
             const initJulia = `
-using JSON, Base64
+                    try
+                        using JSON, Base64
+                    catch e
+                        println(stderr, "ERRO_PACOTE: JSON nao instalado.")
+                        exit(1)
+                    end
 
-function execute_julia(code_str)
-    stdout_orig = stdout
-    stderr_orig = stderr
-    
-    out_io = IOBuffer()
-    err_io = IOBuffer()
-    
-    try
-        redirect_stdout(out_io) do
-            redirect_stderr(err_io) do
-                # Avalia o código no escopo Main
-                result = include_string(Main, code_str)
-                if result !== nothing
-                    println(result)
-                end
-            end
-        end
-    catch e
-        showerror(err_io, e, catch_backtrace())
-    end
+                    function execute_julia(code_str)
+                        out_io, err_io = IOBuffer(), IOBuffer()
+                        
+                        # Salva os seletores originais
+                        original_stdout = stdout
+                        original_stderr = stderr
+                        
+                        # Cria pipes para captura
+                        out_rd, out_wr = redirect_stdout()
+                        err_rd, err_wr = redirect_stderr()
+                        
+                        try
+                            # Execução do código
+                            result = include_string(Main, code_str)
+                            result !== nothing && println(result)
+                            
+                            # Força o despejo para os pipes
+                            flush(stdout)
+                            flush(stderr)
+                        catch e
+                            showerror(err_wr, e, catch_backtrace())
+                        finally
+                            # Restaura os seletores originais imediatamente
+                            redirect_stdout(original_stdout)
+                            redirect_stderr(original_stderr)
+                            
+                            # Fecha os seletores de escrita para finalizar a leitura
+                            close(out_wr)
+                            close(err_wr)
+                            
+                            # Coleta os dados capturados
+                            res_stdout = read(out_rd, String)
+                            res_stderr = read(err_rd, String)
+                            
+                            # Montagem do seletor de resposta JSON
+                            res = Dict(
+                                "stdout" => res_stdout,
+                                "stderr" => res_stderr,
+                                "imageData" => ""
+                            )
+                            
+                            println(stdout, "###RESULT###")
+                            println(stdout, JSON.json(res))
+                            println(stdout, "###END###")
+                            flush(stdout)
+                        end
+                    end
 
-    res = Dict(
-        "stdout" => String(take!(out_io)),
-        "stderr" => String(take!(err_io)),
-        "imageData" => "" # Suporte a Plots.jl pode ser adicionado aqui
-    )
-    
-    println(stdout_orig, "###RESULT###")
-    println(stdout_orig, JSON.json(res))
-    println(stdout_orig, "###END###")
-    flush(stdout_orig)
-end
+                    println("JULIA_READY")
+                    flush(stdout)
 
-println("JULIA_READY")
-flush(stdout)
+                    while !eof(stdin)
+                        line = readline(stdin)
+                        line == "EXIT" && break
+                        if startswith(line, "EXEC:MULTILINE")
+                            code_lines = []
+                            while (l = readline(stdin)) != "END_CODE"
+                                push!(code_lines, l)
+                            end
+                            execute_julia(join(code_lines, "\\n"))
+                        elseif startswith(line, "EXEC:")
+                            execute_julia(line[6:end])
+                        end
+                    end`;
 
-while !eof(stdin)
-    line = readline(stdin)
-    if line == "EXIT"
-        break
-    elseif startswith(line, "EXEC:MULTILINE")
-        code_lines = []
-        while true
-            l = readline(stdin)
-            l == "END_CODE" && break
-            push!(code_lines, l)
-        end
-        execute_julia(join(code_lines, "\\n"))
-    end
-end
-`;
+            // Seletor de diretório seguro
+            const workingDir = this.currentNotePath ? path.dirname(this.currentNotePath) : process.cwd();
 
             this.juliaProcess = spawn(
-                this.plugin.settings.juliaExecutable || "julia",
-                ["-e", initJulia],
-                { cwd: path.dirname(this.currentNotePath!) }
+                this.plugin.settings.juliaExecutable || "julia", 
+                ["-e", initJulia], 
+                { cwd: workingDir, env: process.env } // env: process.env é vital para achar pacotes
             );
 
-            this.juliaProcess.stdout?.on("data", (data) => {
-                const output = data.toString();
-                if (output.includes("JULIA_READY")) {
-                    this.isJuliaReady = true;
-                    resolve();
-                }
-                // Lógica de processamento de fila similar ao Python...
-            });
-
             let juliaOutput = "";
+            
+            const timeout = setTimeout(() => {
+                if (!this.isJuliaReady) {
+                    this.juliaProcess?.kill();
+                    reject(new Error("Julia Timeout: Verifique se 'julia' esta no PATH ou se o pacote JSON esta instalado."));
+                }
+            }, 15000); // Aumentado para 15s para dar tempo ao pre-compile
+
             this.juliaProcess.stdout?.on("data", (data) => {
                 const chunk = data.toString();
                 juliaOutput += chunk;
 
-                if (juliaOutput.includes("###END###")) {
-                    const match = juliaOutput.match(/###RESULT###\s*(.*?)\s*###END###/s);
-                    if (match && this.executionQueue.length > 0) {
-                        const current = this.executionQueue.shift();
-                        try {
-                            current?.resolve(JSON.parse(match[1]));
-                        } catch (e) {
-                            current?.reject(e);
+                if (!this.isJuliaReady && juliaOutput.includes("JULIA_READY")) {
+                    this.isJuliaReady = true;
+                    clearTimeout(timeout);
+                    console.log("JupyMD: Kernel Julia pronto.");
+                    resolve();
+                    juliaOutput = ""; // Limpa buffer inicial
+                    return;
+                }
+
+                if (this.isJuliaReady && juliaOutput.includes("###END###")) {
+                    const resultMatch = juliaOutput.match(/###RESULT###\s*([\s\S]*?)\s*###END###/);
+                    if (resultMatch) {
+                        const currentExecution = this.executionQueue.shift();
+                        if (currentExecution) {
+                            try {
+                                currentExecution.resolve(JSON.parse(resultMatch[1]));
+                            } catch (e) {
+                                currentExecution.reject(e);
+                            }
                         }
                     }
-                    juliaOutput = ""; // Limpa buffer para próxima execução
+                    juliaOutput = "";
                 }
+            });
+
+            this.juliaProcess.stderr?.on("data", (data) => {
+                const err = data.toString();
+                console.error("Julia Stderr:", err);
+                if (err.includes("ERRO_PACOTE")) new Notice(err);
             });
         });
     }
@@ -478,31 +515,47 @@ end
         });
     }
 
-    async restartKernel(): Promise<void> {
-        if (this.pythonProcess) {
-            this.pythonProcess.stdin?.write("EXIT\n");
-            this.pythonProcess.kill();
-            this.pythonProcess = null;
-        }
-        this.isProcessReady = false;
-        this.currentNotePath = null;
+    // No CodeExecutor class
 
-        while (this.executionQueue.length > 0) {
-            const execution = this.executionQueue.shift();
-            if (execution) {
-                execution.reject(new Error("Kernel restarted"));
+    async restartKernel(lang: "python" | "julia"): Promise<void> {
+        if (lang === "python") {
+            if (this.pythonProcess) {
+                this.pythonProcess.stdin?.write("EXIT\n");
+                this.pythonProcess.kill();
+                this.pythonProcess = null;
             }
+            this.isProcessReady = false;
+        } else {
+            if (this.juliaProcess) {
+                this.juliaProcess.stdin?.write("EXIT\n");
+                this.juliaProcess.kill();
+                this.juliaProcess = null;
+            }
+            this.isJuliaReady = false;
         }
 
-        new Notice("Python kernel restarted");
+        // Limpa apenas execuções da linguagem específica na fila
+        this.executionQueue = this.executionQueue.filter(ex => {
+            if (ex.lang === lang) {
+                ex.reject(new Error(`${lang} kernel restarted`));
+                return false;
+            }
+            return true;
+        });
+
+        new Notice(`${lang.charAt(0).toUpperCase() + lang.slice(1)} kernel restarted`);
     }
 
     cleanup(): void {
         if (this.pythonProcess) {
             this.pythonProcess.stdin?.write("EXIT\n");
             this.pythonProcess.kill();
-            this.pythonProcess = null;
+        }
+        if (this.juliaProcess) {
+            this.juliaProcess.stdin?.write("EXIT\n");
+            this.juliaProcess.kill();
         }
         this.isProcessReady = false;
+        this.isJuliaReady = false;
     }
 }
