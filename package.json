@@ -37,6 +37,7 @@
 		"@codemirror/highlight": "^0.19.8",
 		"@codemirror/lang-python": "^6.2.1",
 		"@codemirror/theme-one-dark": "^6.1.2",
+		"@plutojl/lang-julia": "^0.12.1",
 		"@types/prismjs": "^1.26.5",
 		"@uiw/react-codemirror": "^4.23.12",
 		"highlight.js": "^11.11.1",

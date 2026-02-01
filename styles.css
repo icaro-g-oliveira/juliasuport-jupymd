@@ -84,8 +84,120 @@
 	font-size: 0.9em;
 	border: none;
 }
-
 .code-container .cm-content {
 	border: none;
 	box-shadow: none;
+}
+
+/* Seletor para forçar o tema do Obsidian dentro do seu container */
+.code-container pre[class*="language-"] {
+    /*background: transparent !important; 
+    margin: 0 !important; */
+}
+
+.code-container code[class*="language-"],
+.code-container .token {
+    font-family: var(--font-monospace) !important;
+    text-shadow: none !important; /* Remove sombras do Prism default */
+}
+
+/* Mapeamento de Cores Nativo */
+.code-container .token.keyword { color: var(--code-keyword) !important; }
+.code-container .token.string { color: var(--code-string) !important; }
+.code-container .token.comment { color: var(--code-comment) !important; }
+.code-container .token.function { color: var(--code-function) !important; }
+.code-container .token.number { color: var(--code-value) !important; }
+.code-container .token.operator { color: var(--code-operator) !important; }
+.code-container .token.punctuation { color: var(--code-punctuation) !important; }
+.code-container .token.class-name { color: var(--code-class) !important; }
+.code-container .token.boolean { color: var(--code-value) !important; }
+.code-container .token.constant { color: var(--code-value) !important; }
+
+.code-content-body {
+    background-color: var(--background-primary); /* Fundo oficial do editor */
+    padding: 0 !important; /* O pre já costuma ter padding */
+}
+
+.code-content-body pre {
+    padding: 1em !important;
+    border-radius: 0 0 6px 6px;
+}
+
+/* Seletor do Container Principal */
+.code-container {
+    font-family: var(--font-monospace);
+    background-color: var(--code-background);
+    border: 1px solid var(--divider-color);
+}
+
+/* Mimetizando o modo edit do Obsidian */
+.HyperMD-codeblock.cm-line {
+    padding: 0 4px;
+    line-height: 1.5;
+    background-color: transparent !important; /* O fundo vem do container */
+}
+
+/* Seletores de Token vinculados ao Tema Ativo */
+.cm-keyword { color: var(--code-keyword); font-weight: bold; }
+.cm-string { color: var(--code-string); }
+.cm-variable { color: var(--code-variable); }
+.cm-variable-2 { color: var(--code-important); }
+.cm-code { color: var(--code-normal); }
+
+
+/* Mapeamento de Tokens Lezer -> Obsidian Theme */
+.obsidian-cm6-engine .cm-keyword { color: var(--code-keyword); font-weight: bold; }
+.obsidian-cm6-engine .cm-string { color: var(--code-string); }
+.obsidian-cm6-engine .cm-comment { color: var(--code-comment); font-style: italic; }
+.obsidian-cm6-engine .cm-variableName, 
+.obsidian-cm6-engine .cm-variable { color: var(--code-variable); }
+.obsidian-cm6-engine .cm-operator { color: var(--code-operator); }
+.obsidian-cm6-engine .cm-macroName { color: var(--code-important); } /* Para @app, @in, etc */
+
+/* Limpeza de filtros de saturação do CM6 */
+.obsidian-cm6-engine .cm-content {
+    -webkit-font-smoothing: antialiased;
+    text-shadow: none !important;
+}
+
+/* Mapeamento de Alta Fidelidade (Saturação Nativa) */
+.obsidian-cm6-engine .cm-keyword,
+.obsidian-cm6-engine .cm-atom,
+.obsidian-cm6-engine .cm-bool { 
+    color: var(--code-keyword) !important; 
+    font-weight: var(--code-weight-keyword, bold);
+}
+
+.obsidian-cm6-engine .cm-string,
+.obsidian-cm6-engine .cm-string-2 { 
+    color: var(--code-string) !important; 
+}
+
+.obsidian-cm6-engine .cm-comment { 
+    color: var(--code-comment) !important; 
+    opacity: 1 !important; /* Evita que o CM6 desature o comentário */
+}
+
+.obsidian-cm6-engine .cm-variableName,
+.obsidian-cm6-engine .cm-variable { 
+    color: var(--code-variable) !important; 
+}
+
+.obsidian-cm6-engine .cm-macroName,
+.obsidian-cm6-engine .cm-meta { 
+    color: var(--code-important) !important; 
+}
+
+.obsidian-cm6-engine .cm-number { 
+    color: var(--code-value) !important; 
+}
+
+.obsidian-cm6-engine .cm-operator,
+.obsidian-cm6-engine .cm-punctuation { 
+    color: var(--code-punctuation) !important; 
+}
+
+.obsidian-cm6-engine .cm-function,
+.obsidian-cm6-engine .cm-definition {
+    color: var(--code-function) !important;
 }

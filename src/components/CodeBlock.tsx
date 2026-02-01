@@ -329,10 +329,13 @@ return (
                 </div>
             </div>
 
-            <div ref={codeBlockRef} onClick={handleEditClick} style={{cursor: 'text'}}>
-				
-				<HighlightedCodeBlock code={code} language={language} />
-            </div>
+            <div 
+			ref={codeBlockRef} 
+			onClick={handleEditClick} 
+			className="markdown-rendered code-content-body" // Adicione 'markdown-rendered'
+		>
+			<HighlightedCodeBlock code={code} language={language} />
+		</div>
 
             {hasOutput && <pre className="code-output">{output}</pre>}
         </div>
