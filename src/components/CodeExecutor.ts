@@ -30,21 +30,24 @@ export class CodeExecutor {
         if (!activeFile) return;
 
         const currentPath = getAbsolutePath(activeFile);
-        if (
-            this.currentNotePath &&
-            this.currentNotePath !== currentPath
-        ) {
-            new Notice(
-                "Please restart the kernel before executing code in another note.\nUse the 'Restart Python kernel' command."
-            );
-            return;
+        
+        // Se mudou de nota, atualizamos o caminho e o diretório do processo
+        if (this.currentNotePath !== currentPath) {
+            this.currentNotePath = currentPath;
+            const newDir = path.dirname(currentPath);
+            
+            // Comando Julia para mudar o diretório de trabalho sem matar o processo
+            const cdCommand = `cd("${newDir.replace(/\\/g, "/")}")`;
+            if (codeBlock.language === "julia") {
+                await this.sendCodeToJulia(cdCommand);
+            } else {
+                await this.sendCodeToPython(`import os; os.chdir(r'${newDir}')`);
+            }
+            new Notice(`Kernel context switched to: ${activeFile.name}`);
         }
 
-        this.currentNotePath = currentPath;
-
-        if (!activeFile) return;
-
         const ipynbPath = currentPath.replace(/\.md$/, ".ipynb");
+        const lang = codeBlock.language || "python";
 
         const lang = codeBlock.language || "python";
 
