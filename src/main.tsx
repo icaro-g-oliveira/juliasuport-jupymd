@@ -38,70 +38,54 @@ export default class JupyMDPlugin extends Plugin {
 			})
 		);
 
+		const supportedLanguages: Array<"python" | "julia"> = ["python", "julia"];
+
 		if (this.settings.enableCodeBlocks) {
-			await this.registerMarkdownCodeBlockProcessor(
-				"python",
-				async (source, el, ctx) => {
-					el.empty();
-					const reactRoot = document.createElement("div");
-					el.appendChild(reactRoot);
+			supportedLanguages.forEach(async (lang) => {
+				await this.registerMarkdownCodeBlockProcessor(
+					lang,
+					async (source, el, ctx) => {
+						el.empty();
+						const reactRoot = document.createElement("div");
+						el.appendChild(reactRoot);
 
-					const activeFile = this.app.vault.getFileByPath(ctx.sourcePath);
-
-					let index = 0;
-					if (activeFile) {
-						const filePath = getAbsolutePath(activeFile);
-						const fileContent = await this.app.vault.read(activeFile);
-						const lines = fileContent.split("\n");
-						let blockCount = 0;
-						let foundCurrentBlock = false;
-
+						const activeFile = this.app.vault.getFileByPath(ctx.sourcePath);
 						const sectionInfo = ctx.getSectionInfo(el);
-						if (!sectionInfo) {
-							const root = createRoot(reactRoot);
-							root.render(
-								<PythonCodeBlock
-									code={source}
-									path={filePath}
-									index={0}
-									executor={this.executor}
-									plugin={this}
-								/>
-							);
-							return;
-						}
 
-						for (let i = 0; i < lines.length; i++) {
-							const line = lines[i].trim();
-							if (line.startsWith("```python")) {
-								if (i < sectionInfo.lineStart) {
-									blockCount++;
-								} else if (i === sectionInfo.lineStart) {
-									foundCurrentBlock = true;
-									break;
+						if (activeFile && sectionInfo) {
+							const filePath = getAbsolutePath(activeFile);
+							const fileContent = await this.app.vault.read(activeFile);
+							
+							// Cálculo do índice baseado em blocos de código mistos
+							const lines = fileContent.split("\n");
+							let blockIndex = 0;
+							
+							for (let i = 0; i < lines.length; i++) {
+								const line = lines[i].trim();
+								// Detecta qualquer abertura de bloco para manter paridade com o .ipynb
+								if (line.startsWith("```python") || line.startsWith("```julia")) {
+									if (i < sectionInfo.lineStart) {
+										blockIndex++;
+									} else if (i === sectionInfo.lineStart) {
+										break;
+									}
 								}
 							}
-						}
 
-						if (foundCurrentBlock) {
-							index = blockCount;
 							createRoot(reactRoot).render(
 								<PythonCodeBlock
 									code={source}
 									path={filePath}
-									index={index}
+									index={blockIndex}
 									executor={this.executor}
 									plugin={this}
+									language={lang} // Prop passiva para o realce e execução
 								/>
 							);
 						}
-					} else {
-						createRoot(reactRoot).render(
-							<PythonCodeBlock code={source} />
-						);
 					}
-				}
-			);
+				);
+			});
 		}
 	}
 

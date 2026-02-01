@@ -11,8 +11,13 @@ export class CodeExecutor {
     private currentNotePath: string | null = null;
     private pythonProcess: ChildProcess | null = null;
     private isProcessReady = false;
+
+    private isJuliaReady = false;
+    private juliaProcess: ChildProcess | null = null; // Kernel Julia
+
     private executionQueue: Array<{
         code: string;
+        lang: "python" | "julia";
         resolve: (result: any) => void;
         reject: (error: any) => void;
     }> = [];
@@ -41,18 +46,24 @@ export class CodeExecutor {
 
         const ipynbPath = currentPath.replace(/\.md$/, ".ipynb");
 
+        const lang = codeBlock.language || "python";
+
         await this.runCodeAndUpdateNotebook({
             codeBlock: codeBlock,
             ipynbPath,
+            lang: lang
         });
     }
 
-    async runCodeAndUpdateNotebook({codeBlock, ipynbPath}: {
+    async runCodeAndUpdateNotebook({codeBlock, ipynbPath, lang}: {
         codeBlock: CodeBlock;
         ipynbPath: string;
+        lang: string;
     }) {
         try {
-            const result = await this.sendCodeToPython(codeBlock.code);
+            const result = lang === "julia" 
+                ? await this.sendCodeToJulia(codeBlock.code)
+                : await this.sendCodeToPython(codeBlock.code);
             const {stdout, stderr, imageData} = result;
 
             const raw = await fs.readFile(ipynbPath, "utf-8");
@@ -305,6 +316,140 @@ while True:
         });
     }
 
+    private async initializeJuliaProcess(): Promise<void> {
+        if (this.juliaProcess && !this.juliaProcess.killed) return;
+
+        return new Promise((resolve, reject) => {
+            // Script de inicialização Julia para emular comportamento de Kernel
+            const initJulia = `
+using JSON, Base64
+
+function execute_julia(code_str)
+    stdout_orig = stdout
+    stderr_orig = stderr
+    
+    out_io = IOBuffer()
+    err_io = IOBuffer()
+    
+    try
+        redirect_stdout(out_io) do
+            redirect_stderr(err_io) do
+                # Avalia o código no escopo Main
+                result = include_string(Main, code_str)
+                if result !== nothing
+                    println(result)
+                end
+            end
+        end
+    catch e
+        showerror(err_io, e, catch_backtrace())
+    end
+
+    res = Dict(
+        "stdout" => String(take!(out_io)),
+        "stderr" => String(take!(err_io)),
+        "imageData" => "" # Suporte a Plots.jl pode ser adicionado aqui
+    )
+    
+    println(stdout_orig, "###RESULT###")
+    println(stdout_orig, JSON.json(res))
+    println(stdout_orig, "###END###")
+    flush(stdout_orig)
+end
+
+println("JULIA_READY")
+flush(stdout)
+
+while !eof(stdin)
+    line = readline(stdin)
+    if line == "EXIT"
+        break
+    elseif startswith(line, "EXEC:MULTILINE")
+        code_lines = []
+        while true
+            l = readline(stdin)
+            l == "END_CODE" && break
+            push!(code_lines, l)
+        end
+        execute_julia(join(code_lines, "\\n"))
+    end
+end
+`;
+
+            this.juliaProcess = spawn(
+                this.plugin.settings.juliaExecutable || "julia",
+                ["-e", initJulia],
+                { cwd: path.dirname(this.currentNotePath!) }
+            );
+
+            this.juliaProcess.stdout?.on("data", (data) => {
+                const output = data.toString();
+                if (output.includes("JULIA_READY")) {
+                    this.isJuliaReady = true;
+                    resolve();
+                }
+                // Lógica de processamento de fila similar ao Python...
+            });
+
+            let juliaOutput = "";
+            this.juliaProcess.stdout?.on("data", (data) => {
+                const chunk = data.toString();
+                juliaOutput += chunk;
+
+                if (juliaOutput.includes("###END###")) {
+                    const match = juliaOutput.match(/###RESULT###\s*(.*?)\s*###END###/s);
+                    if (match && this.executionQueue.length > 0) {
+                        const current = this.executionQueue.shift();
+                        try {
+                            current?.resolve(JSON.parse(match[1]));
+                        } catch (e) {
+                            current?.reject(e);
+                        }
+                    }
+                    juliaOutput = ""; // Limpa buffer para próxima execução
+                }
+            });
+        });
+    }
+
+    async sendCodeToJulia(code: string): Promise<{
+        stdout: string;
+        stderr: string;
+        imageData?: string;
+    }> {
+    // Garante que o processo Julia esteja rodando
+    await this.initializeJuliaProcess();
+
+    return new Promise((resolve, reject) => {
+        // Adiciona a tarefa à fila com a marcação de linguagem
+        this.executionQueue.push({
+            code, 
+            lang: "julia", 
+            resolve, 
+            reject
+        });
+
+        if (!this.juliaProcess || !this.juliaProcess.stdin) {
+            reject(new Error("Julia process not available"));
+            return;
+        }
+
+        // Envio do código via stream stdin
+        if (code.includes('\n')) {
+            // Protocolo multiline para evitar quebras de comando
+            this.juliaProcess.stdin.write("EXEC:MULTILINE\n");
+            const lines = code.split('\n');
+            for (const line of lines) {
+                this.juliaProcess.stdin.write(line + "\n");
+            }
+            this.juliaProcess.stdin.write("END_CODE\n");
+        } else {
+            // Comando de linha única
+            this.juliaProcess.stdin.write(`EXEC:${code}\n`);
+        }
+    });
+}
+
     async sendCodeToPython(code: string): Promise<{
         stdout: string;
         stderr: string;
@@ -313,7 +458,7 @@ while True:
         await this.initializePythonProcess();
 
         return new Promise((resolve, reject) => {
-            this.executionQueue.push({code, resolve, reject});
+            this.executionQueue.push({code, resolve, reject, lang:"python"});
 
             if (!this.pythonProcess || !this.pythonProcess.stdin) {
                 reject(new Error("Python process not available"));

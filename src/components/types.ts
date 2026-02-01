@@ -1,4 +1,5 @@
 export type JupyMDPluginSettings = {
+    juliaExecutable: string;
 	autoSync: boolean;
 	bidirectionalSync: boolean;
 	pythonInterpreter: string;
@@ -12,11 +13,13 @@ export const DEFAULT_SETTINGS: JupyMDPluginSettings = {
 	pythonInterpreter: "",
 	notebookEditorCommand: "jupyter-lab",
 	enableCodeBlocks: true,
+	juliaExecutable: ""
 };
 
 export type CodeBlock = {
 	code: string;
 	cellIndex: number;
+	language?: string;
 }
 
 export type PythonBlockProps = {
@@ -25,4 +28,5 @@ export type PythonBlockProps = {
 	index?: number;
 	executor?: any;
 	plugin?: any;
+	language?: string;
 }

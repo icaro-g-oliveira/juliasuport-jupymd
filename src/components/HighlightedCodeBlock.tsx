@@ -5,20 +5,27 @@ import "prismjs/components/prism-python";
 
 interface HighlightedCodeBlockProps {
     code: string;
+    language: string | "python" | "julia";
 }
 
-export const HighlightedCodeBlock: React.FC<HighlightedCodeBlockProps> = ({code}) => {
+export const HighlightedCodeBlock: React.FC<HighlightedCodeBlockProps> = ({
+    code, 
+    language = "python" 
+}) => {
     const codeRef = useRef<HTMLElement>(null);
 
     useEffect(() => {
         if (codeRef.current) {
             highlightElement(codeRef.current);
         }
-    }, [code]);
+    }, [code, language]);
+
+    // O seletor de classe deve ser dinâmico para o PrismJS aplicar a gramática correta
+    const langClass = `language-${language}`;
 
     return (
-        <pre className="language-python">
-            <code ref={codeRef} className="language-python">
+        <pre className={langClass}>
+            <code ref={codeRef} className={langClass}>
                 {code}
             </code>
         </pre>

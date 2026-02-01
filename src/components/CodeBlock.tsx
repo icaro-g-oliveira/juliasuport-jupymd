@@ -8,12 +8,17 @@ import {LoadIcon} from "../svg/LoadIcon";
 import {CodeBlock, PythonBlockProps} from "./types";
 import {HighlightedCodeBlock} from "./HighlightedCodeBlock";
 
+interface MultiLangBlockProps extends PythonBlockProps {
+    language?: "python" | "julia";
+}
+
 export const PythonCodeBlock: React.FC<PythonBlockProps> = ({
 																code = "# No code provided",
 																path,
 																index,
 																executor,
 																plugin,
+																language="python"
 															}) => {
 	const [output, setOutput] = useState<string | JSX.Element>("");
 	const [hasOutput, setHasOutput] = useState<boolean>(false);
@@ -40,14 +45,14 @@ export const PythonCodeBlock: React.FC<PythonBlockProps> = ({
 
 		const escapedCode = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-		const codeBlockPattern = new RegExp(`\`\`\`python\\n${escapedCode}(\\n\`\`\`|$)`, 'gm');
+		const codeBlockPattern = new RegExp(`\`\`\`${language}\\n${escapedCode}(\\n\`\`\`|$)`, 'gm');
 		const match = codeBlockPattern.exec(content);
 
 		if (match) {
 			const startPos = match.index;
 			const endPos = startPos + match[0].length;
 
-			const codeStart = startPos + "```python\n".length;
+			const codeStart = startPos + `\`\`\`${language}\n`.length;
 			const codeEnd = endPos - (match[0].endsWith("```") ? "\n```".length : 0);
 
 			editor.setSelection(
@@ -214,7 +219,8 @@ export const PythonCodeBlock: React.FC<PythonBlockProps> = ({
 
 			const codeBlock: CodeBlock = {
 				code: code,
-				cellIndex: currentIndex
+				cellIndex: currentIndex,
+				language: language
 			};
 
 			if (!activeFile) {
@@ -237,7 +243,7 @@ export const PythonCodeBlock: React.FC<PythonBlockProps> = ({
 				setIsLoading(false);
 			}, 100);
 		} catch (err) {
-			console.error("Error executing code:", err);
+			console.error(`Error executing ${language} code:`, err);
 			setIsLoading(false);
 		}
 	};
@@ -300,47 +306,36 @@ export const PythonCodeBlock: React.FC<PythonBlockProps> = ({
 		checkPairing();
 	}, [activeFile]);
 
-	return (
-		<div className="code-container">
-			<div className="code-top-bar">
-				{isPaired && (
-					<div className="code-buttons">
-						<button onClick={handleRun} disabled={isLoading} className="icon-button">
-							{isLoading ? (
-								<LoadIcon className="icon grey-icon"/>
-							) : (
-								<RunIcon className="icon grey-icon"/>
-							)}
-						</button>
-						{hasOutput && (
-							<button onClick={handleClear} className="icon-button">
-								<ClearIcon className="icon grey-icon"/>
-							</button>
-						)}
-					</div>
-				)}
-				{!isPaired && <div/>}
-				<div className="code-lang-label">
-					Python
-				</div>
-			</div>
+	language = (language === "julia" ? "julia" : "python") as "python" | "julia";
 
-			<div
-				ref={codeBlockRef}
-				onClick={handleEditClick}
-				style={{cursor: 'text'}}
-			>
-				<HighlightedCodeBlock
-					code={code}
-				/>
-			</div>
+return (
+        <div className="code-container">
+            <div className="code-top-bar">
+                {isPaired && (
+                    <div className="code-buttons">
+                        <button onClick={handleRun} disabled={isLoading} className="icon-button">
+                            {isLoading ? <LoadIcon className="icon grey-icon"/> : <RunIcon className="icon grey-icon"/>}
+                        </button>
+                        {hasOutput && (
+                            <button onClick={handleClear} className="icon-button">
+                                <ClearIcon className="icon grey-icon"/>
+                            </button>
+                        )}
+                    </div>
+                )}
+                {!isPaired && <div/>}
+                <div className="code-lang-label" style={{textTransform: 'capitalize'}}>
+                    {language}
+                </div>
+            </div>
 
-			{hasOutput && (
-				<pre className="code-output">
-                    {output}
-                </pre>
-			)}
-		</div>
-	);
+            <div ref={codeBlockRef} onClick={handleEditClick} style={{cursor: 'text'}}>
+				
+				<HighlightedCodeBlock code={code} language={language} />
+            </div>
+
+            {hasOutput && <pre className="code-output">{output}</pre>}
+        </div>
+    );
 };
 

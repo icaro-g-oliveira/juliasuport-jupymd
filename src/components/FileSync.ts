@@ -161,25 +161,24 @@ export class FileSync {
 		}
 		const jupytextCmd = getPackageExecutablePath("jupytext", this.pythonPath);
 
-		exec(`${jupytextCmd} --to notebook "${mdPath}"`, (error) => {
-			if (error) {
-				new Notice(`Failed to create notebook: ${error.message}`);
-				return;
-			}
+		const content = await this.app.vault.read(activeFile);
+		const isJulia = content.includes("```julia");
+		
+		// Configuração do Kernel baseado no Welcome.md
+		const kernelSpec = isJulia 
+			? '{"kernelspec": {"display_name": "Julia 1.12", "language": "julia", "name": "julia-1.12"}}'
+			: '{"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}}';
 
-			exec(`${jupytextCmd} "${ipynbPath}" --set-formats ipynb,md --update-metadata '{"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}}'`, (error) => {
-				if (error) {
-					new Notice(`Failed to pair notebook: ${error.message}`);
-					return;
-				}
+		exec(`${jupytextCmd} --to notebook "${mdPath}"`, (error) => {
+			if (error) return;
+
+			// Aplicação dos metadados e pareamento ipynb,md
+			exec(`${jupytextCmd} "${ipynbPath}" --set-formats ipynb,md --update-metadata '${kernelSpec}'`, (error) => {
+				if (error) return;
 
 				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-				const leaf = this.app.workspace.getLeavesOfType(
-					view?.getViewType() ?? ""
-				)[0];
-				(leaf as any).rebuildView(); // Refresh
-
-				new Notice(`Notebook created and paired: ${ipynbPath}`);
+				(view?.leaf as any)?.rebuildView();
+				new Notice(`Notebook paired as ${isJulia ? "Julia" : "Python"}`);
 			});
 		});
 	}

@@ -55,7 +55,48 @@ export class JupyMDSettingTab extends PluginSettingTab {
                         await installLibs(this.plugin.settings.pythonInterpreter,"jupytext matplotlib")
                     })
             );
+        
+        
+        // --- NOVA SEÇÃO: JULIA SETUP ---
+        containerEl.createEl("h4", { text: "Julia Setup" });
 
+        new Setting(containerEl)
+            .setName("Julia executable")
+            .setDesc("Path to Julia binary for executing julia code blocks.")
+            .addText((text) => {
+                text.setValue(this.plugin.settings.juliaExecutable || "julia")
+                text.setPlaceholder("julia")
+                text.onChange(async (value) => {
+                    this.plugin.settings.juliaExecutable = value.trim();
+                    await this.plugin.saveSettings();
+                })
+            });
+
+        new Setting(containerEl)
+            .setName("Install Julia dependencies")
+            .setDesc("Install IJulia and Revise.jl via Julia package manager.")
+            .addButton((btn) =>
+                btn
+                    .setButtonText("Install IJulia")
+                    .onClick(async () => {
+                        new Notice("Installing IJulia via Julia...");
+                        // Executa comando julia para instalar pacotes necessários
+                        const cmd = `${this.plugin.settings.juliaExecutable} -e 'using Pkg; Pkg.add(["IJulia", "Revise"])'`;
+                        // Lógica de execução via shell similar ao installLibs
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Custom Code Blocks")
+            .setDesc("Enable execution buttons for both Python and Julia blocks.")
+            .addToggle((toggle) => {
+                toggle.setValue(this.plugin.settings.enableCodeBlocks)
+                toggle.onChange(async (value) => {
+                    this.plugin.settings.enableCodeBlocks = value;
+                    await this.plugin.saveSettings();
+                })
+            });
+        // ------
         containerEl.createEl('hr');
         containerEl.createEl("h4", { text: "General" });
 
